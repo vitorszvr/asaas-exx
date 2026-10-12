@@ -10,7 +10,7 @@ A empresa solicitou a integração com o gateway **Asaas** com o objetivo centra
 
 > _"Tornar o processo de pagamento seguro e confiável, reduzindo os riscos de fraude e garantindo que as informações de pagamento sejam verdadeiras."_
 
-Foi repassada à equipe a recomendação de implementar o **"Sistema 3DS"**. A pesquisa minuciosa na documentação oficial do Asaas ([docs.asaas.com](https://docs.asaas.com/llms.txt)) revelou que:
+Foi repassada à equipe a recomendação de implementar o **"Sistema 3DS"**. A pesquisa minuciosa na documentação oficial do Asaas ([docs.asaas.com](https://docs.asaas.com/docs/portugu%C3%AAs/llms.txt)) revelou que:
 
 1. **O 3DS não é um produto isolado:** Trata-se do protocolo _3-D Secure_ disponível especificamente na **API Direta de Cobrança** (`POST /v3/payments`), exigindo o envio dos objetos `threeDSecure` e `deviceInfo`.
 2. **Existem Duas Vias de Arquitetura Oficiais:**
@@ -172,10 +172,10 @@ flowchart TD
 
 ### Por que essa divisão em duas fases é indispensável?
 
-| Fase | O que faz | Por que é necessária? |
-|---|---|---|
-| **1. Recepção Síncrona** *(milissegundos)* | Valida o token e salva o evento no banco local com `INSERT OR IGNORE`, retornando `HTTP 200` imediatamente. | A documentação do Asaas alerta que **após 15 falhas consecutivas, a fila de webhooks da conta é pausada**. Não se deve processar regras de negócio pesadas dentro da resposta HTTP. |
-| **2. Processamento Assíncrono** *(Worker)* | O worker lê a fila local, faz a reconsulta ativa na API e aplica as transições atômicas de status no pedido. | Isola a aplicação de instabilidades de rede, garante que nenhum pagamento seja aprovado por payload forjado e gerencia o ciclo de contestação de chargeback com tranquilidade. |
+| Fase                                       | O que faz                                                                                                    | Por que é necessária?                                                                                                                                                               |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1. Recepção Síncrona** _(milissegundos)_ | Valida o token e salva o evento no banco local com `INSERT OR IGNORE`, retornando `HTTP 200` imediatamente.  | A documentação do Asaas alerta que **após 15 falhas consecutivas, a fila de webhooks da conta é pausada**. Não se deve processar regras de negócio pesadas dentro da resposta HTTP. |
+| **2. Processamento Assíncrono** _(Worker)_ | O worker lê a fila local, faz a reconsulta ativa na API e aplica as transições atômicas de status no pedido. | Isola a aplicação de instabilidades de rede, garante que nenhum pagamento seja aprovado por payload forjado e gerencia o ciclo de contestação de chargeback com tranquilidade.      |
 
 ---
 
