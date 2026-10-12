@@ -1,12 +1,13 @@
 # Exemplo de Integração Antifraude Asaas (Python / FastAPI)
 
-Este diretório contém a implementação de referência executável da arquitetura proposta em [`apresentacao_solucao_asaas.md`](../apresentacao_solucao_asaas.md) e [`resposta.md`](../resposta.md).
+Este diretório contém a implementação de referência executável da arquitetura proposta em [`apresentacao_solucao_asaas.md`](../apresentacao_solucao_asaas.md).
 
 O projeto implementa duas alternativas completas de pagamento integradas ao Asaas:
-1. **Possibilidade 1:** API Direta com Sistema 3DS (`POST /v3/payments`) para Cartão de Crédito e Pix Dinâmico;
-2. **Possibilidade 2:** Asaas Checkout Hospedado (`POST /v3/checkouts`) com redução de escopo regulatório de PCI-DSS (SAQ A).
 
-Ambas as vias neutralizam completamente os golpes de **cartão clonado**, **comprovante falso de Pix**, **confirmação forjada por URL de retorno** e **adulteração de preços no front-end**.
+1. **Possibilidade 1:** API Direta com Sistema 3DS (`POST /v3/payments`) para Cartão de Crédito e Pix Dinâmico;
+2. **Possibilidade 2:** Asaas Checkout Hospedado (`POST /v3/checkouts`) com menor escopo de PCI-DSS (o SAQ aplicável deve ser definido com adquirente/QSA).
+
+As duas vias mitigam **comprovante falso de Pix**, **confirmação forjada por URL de retorno** e **adulteração de preços no front-end**; o 3DS (Possibilidade 1) adiciona autenticação do portador contra **cartão clonado**.
 
 ---
 
@@ -38,17 +39,20 @@ exemplo_integracao/
 Requer **Python 3.11+**.
 
 1. Crie e ative um ambiente virtual:
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
 2. Instale as dependências:
+
 ```bash
 pip install -r requirements.txt
 ```
 
 3. Configure as variáveis de ambiente:
+
 ```bash
 cp .env.example .env
 ```
@@ -64,12 +68,13 @@ pytest tests/test_security.py -v
 ```
 
 ### O que é testado:
-- **Ataque 1:** Rejeição imediata de Webhooks sem token com status `HTTP 401`.
+
+- **Ataque 1:** Rejeição imediata de Webhooks sem token (`asaas-access-token`) com status `HTTP 401`.
 - **Ataque 2:** Tentativa de burlar pagamento via URLs de retorno (`/api/orders/{id}/status` permanece `PENDING`).
-- **Ataque 3:** Tentativa de enviar preços adulterados no payload da requisição (o valor é recalculado pelo backend).
+- **Ataque 3:** Tentativa de enviar preços adulterados no payload da requisição (o valor é recalculado pelo backend a partir do catálogo).
 - **Validação de Cartão:** Validação da numeração de cartão pelo Algoritmo de Luhn antes de chamar o gateway.
-- **Ciclo de Chargeback:** Evento `PAYMENT_CHARGEBACK_REQUESTED` com objeto aninhado suspende o pedido para `DISPUTED`, grava a data limite de defesa (`deadlineToSendDisputeDocuments`) e emite alerta com a URL de contestação (`POST /v3/chargebacks/{id}/dispute`).
-- **Aprovação de Checkout:** Evento `CHECKOUT_PAID` com conferência de assinatura e sessão libera o pedido para `PAID`.
+- **Ciclo de Chargeback:** Evento de chargeback suspende o pedido para `DISPUTED`, consulta `GET /v3/payments/{id}/chargeback` para gravar o motivo e o prazo limite de defesa (`deadlineToSendDisputeDocuments` para `POST /v3/chargebacks/{id}/dispute`), reverte para `PAID` quando o chargeback tem status `REVERSED` e estorna para `REVERSED` em `DISPUTE_LOST`.
+- **Aprovação e Validação de Checkout:** Evento `CHECKOUT_PAID` confere status `PAID`, vínculo da sessão (`id` e `externalReference`) e soma dos itens (`value × quantity`), liberando o pedido para `PAID` (e bloqueando caso o valor divirja).
 
 ---
 
@@ -82,6 +87,7 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 A documentação interativa da API estará disponível em:
+
 - Swagger UI: `http://localhost:8000/docs`
 - Redoc: `http://localhost:8000/redoc`
 
@@ -91,13 +97,13 @@ A documentação interativa da API estará disponível em:
 
 Para testar transações reais contra o ambiente de [Sandbox do Asaas](https://docs.asaas.com/docs/sandbox):
 
-1. Obtenha sua API Key no painel Sandbox em *Configurações da Conta > Integrações*;
+1. Obtenha sua API Key no painel Sandbox em _Configurações da Conta > Integrações_;
 2. Preencha `ASAAS_API_KEY` e `ASAAS_WEBHOOK_TOKEN` no arquivo `.env`;
 3. **Simulação de Recusa Oficial (Cartões de Teste do Asaas):**
    - **Mastercard:** `5184019740373151`
    - **Visa:** `4916561358240741`
-   - *Comportamento esperado:* A API responde `HTTP 400` (`invalid_creditCard`), nenhuma cobrança indevida é persistida e o pedido continua `PENDING`.
-4. **Simulação de Aprovação Limpa:**
-   - Utilize qualquer número válido gerado por algoritmo de Luhn com data de expiração futura e CVV `123`.
-   - *Comportamento esperado:* O status só transiciona para `PAID` quando o Asaas entrega o Webhook oficial na rota `/webhooks/asaas`.
-
+   - _Comportamento esperado:_ a falha é tratada pela aplicação e o pedido não é liberado.
+4. **Simulação de Aprovação:**
+   - Utilize um número fictício válido (Luhn) com data de expiração futura.
+   - _Comportamento esperado:_ o status só transiciona para `PAID` quando o Asaas entrega o Webhook oficial na rota `/webhooks/asaas` e a cobrança é reconsultada.
+5. **3DS:** segundo a documentação, o 3DS não pode ser testado em sandbox (as transações são aprovadas automaticamente); a validação real exige produção com o 3DS habilitado pelo suporte do Asaas.

@@ -5,7 +5,7 @@ from decimal import Decimal
 ASAAS_ENV = os.getenv("ASAAS_ENV", "sandbox")
 ASAAS_BASE_URL = os.getenv(
     "ASAAS_BASE_URL",
-    "https://sandbox.asaas.com/api" if ASAAS_ENV == "sandbox" else "https://api.asaas.com",
+    "https://api-sandbox.asaas.com" if ASAAS_ENV == "sandbox" else "https://api.asaas.com",
 )
 ASAAS_API_KEY = os.getenv("ASAAS_API_KEY", "")
 ASAAS_WEBHOOK_TOKEN = os.getenv("ASAAS_WEBHOOK_TOKEN", "")

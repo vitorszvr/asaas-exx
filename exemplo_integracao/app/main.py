@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from . import orders
-from .config import WEBHOOK_TOKEN
+from .config import ASAAS_WEBHOOK_TOKEN as WEBHOOK_TOKEN
 from .db import db, init_db, now
 from .worker import process_pending_webhooks
 
@@ -40,8 +40,14 @@ class HolderInfoDTO(BaseModel):
     phone: str
 
 class DeviceDTO(BaseModel):
-    ipAddress: str
+    # Campos de deviceInfo conforme docs.asaas.com/docs/criar-cobrança-com-3ds.
+    # remoteIp NÃO é aceito do cliente: é obtido pelo backend.
     userAgent: str
+    colorDepth: int | None = None
+    screenHeight: int | None = None
+    screenWidth: int | None = None
+    timeZoneOffset: float | None = None  # em HORAS (ex.: 3 para UTC-3)
+    language: str | None = None
 
 class PayCard3DSDTO(BaseModel):
     customer: CustomerDTO

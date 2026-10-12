@@ -1,5 +1,6 @@
 import json
 import logging
+from decimal import Decimal
 from . import asaas
 from .db import db, transition
 from .decision import SecurityDivergence, decide_payment_status
@@ -40,7 +41,16 @@ def process_single_event(event_row) -> None:
 
         # Validação cruzada com dados da sessão
         if event_name == "CHECKOUT_PAID":
-            if checkout_data.get("status") == "PAID" and checkout_data.get("externalReference") == order["id"]:
+            items = checkout_data.get("items") or []
+            try:
+                items_total = sum(Decimal(str(i["value"])) * int(i.get("quantity", 1)) for i in items)
+            except (KeyError, ValueError, ArithmeticError):
+                items_total = None
+            if (
+                checkout_data.get("status") == "PAID"
+                and checkout_data.get("externalReference", order["id"]) == order["id"]
+                and items_total == Decimal(order["total"])
+            ):
                 apply_state(order["id"], "PAID")
             else:
                 log.error("Divergência de payload no evento CHECKOUT_PAID para o pedido %s", order["id"])
@@ -76,23 +86,29 @@ def process_single_event(event_row) -> None:
         new_state = decide_payment_status(order, remote_payment)
         if new_state and new_state != order["status"]:
             apply_state(order["id"], new_state)
-            
-            # Registro de Metadados de Chargeback para Defesa Operacional
-            if new_state == "DISPUTED":
-                cb = remote_payment.get("chargeback") or {}
-                cb_id = cb.get("id")
-                cb_reason = cb.get("reason", "ABSENT_CARD_FRAUD")
-                cb_deadline = cb.get("deadlineToSendDisputeDocuments")
-                with db() as conn:
-                    conn.execute(
-                        "UPDATE orders SET dispute_reason=?, dispute_deadline=? WHERE id=?",
-                        (cb_reason, cb_deadline, order["id"]),
-                    )
-                log.warning(
-                    "ALERTA OPERACIONAL [CHARGEBACK]: Pedido %s contestado pelo portador! "
-                    "Disputa ID: %s | Motivo: %s | Prazo limite para contestação via POST /v3/chargebacks/%s/dispute: %s",
-                    order["id"], cb_id, cb_reason, cb_id, cb_deadline or "Verificar no painel Asaas"
+
+        # Registro de Metadados de Chargeback para Defesa Operacional.
+        # O objeto aninhado no webhook traz só status/reason; id e prazo de defesa
+        # vêm de GET /v3/payments/{id}/chargeback.
+        if new_state == "DISPUTED":
+            cb = remote_payment.get("chargeback") or {}
+            try:
+                cb = {**cb, **asaas.get_chargeback(payment_id)}
+            except (asaas.AsaasUnavailableError, asaas.AsaasDefinitiveError):
+                log.warning("Não foi possível consultar o chargeback de %s; usando dados do webhook", payment_id)
+            cb_id = cb.get("id")
+            cb_reason = cb.get("reason")
+            cb_deadline = cb.get("deadlineToSendDisputeDocuments")
+            with db() as conn:
+                conn.execute(
+                    "UPDATE orders SET dispute_reason=?, dispute_deadline=? WHERE id=?",
+                    (cb_reason, cb_deadline, order["id"]),
                 )
+            log.warning(
+                "ALERTA OPERACIONAL [CHARGEBACK]: Pedido %s contestado pelo portador! "
+                "Disputa ID: %s | Motivo: %s | Prazo limite para contestação via POST /v3/chargebacks/%s/dispute: %s",
+                order["id"], cb_id, cb_reason, cb_id, cb_deadline or "Verificar no painel Asaas"
+            )
     except SecurityDivergence as exc:
         log.error("Divergência de segurança no pedido %s: %s", order["id"], exc)
 

@@ -61,6 +61,10 @@ def find_payment_by_reference(order_id: str) -> dict | None:
 def get_pix_qrcode(payment_id: str) -> dict:
     return _request("GET", f"/v3/payments/{payment_id}/pixQrCode")
 
+def get_chargeback(payment_id: str) -> dict:
+    """Recupera o chargeback de uma cobrança (id, status, reason, deadlineToSendDisputeDocuments)."""
+    return _request("GET", f"/v3/payments/{payment_id}/chargeback")
+
 # Possibilidade 2: Asaas Checkout
 def create_checkout_session(payload: dict) -> dict:
     return _request("POST", "/v3/checkouts", json=payload)

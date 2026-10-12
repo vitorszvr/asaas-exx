@@ -100,7 +100,7 @@ def pay_via_api_card_3ds(order_id: str, customer_data: dict, card_data: dict,
             "creditCardHolderInfo": holder_info,
             "remoteIp": remote_ip,  # IP capturado no backend
             "threeDSecure": {"callbackUrl": f"{PUBLIC_BASE_URL}/pedido/{order_id}/processando"},
-            "deviceInfo": {**device_data, "remoteIp": remote_ip},
+            "deviceInfo": {**{k: v for k, v in device_data.items() if v is not None}, "remoteIp": remote_ip},
         }
         
         # Criação resiliente com busca prévia por externalReference em caso de timeout
@@ -135,7 +135,7 @@ def pay_via_api_card_3ds(order_id: str, customer_data: dict, card_data: dict,
     return {
         "paymentId": remote_payment["id"],
         "status": remote_payment.get("status"),
-        "challengeUrl": remote_payment.get("threeDSecureUrl") or remote_payment.get("threeDSecureChallengeUrl"),
+        "challengeUrl": remote_payment.get("threeDSecureChallengeUrl"),
     }
 
 def pay_via_api_pix_direct(order_id: str, customer_data: dict) -> dict:
@@ -213,11 +213,11 @@ def pay_via_hosted_checkout(order_id: str) -> dict:
         )
         transition(conn, order_id, "AWAITING_PAYMENT", {"CREATING"})
 
-    # URL com fallback seguro conforme documentação de montagem de link
+    # Segundo o guia "Link do checkout e redirecionamento do cliente", usa-se o `id`
+    # retornado na criação para montar https://asaas.com/checkoutSession/show?id=<id>
+    # (ou o campo `link`, quando retornado pelo endpoint).
     checkout_id = checkout_session["id"]
-    is_sandbox = "sandbox" in ASAAS_BASE_URL
-    checkout_domain = "sandbox.asaas.com" if is_sandbox else "asaas.com"
-    checkout_url = checkout_session.get("link") or f"https://{checkout_domain}/checkoutSession/show?id={checkout_id}"
+    checkout_url = checkout_session.get("link") or f"https://asaas.com/checkoutSession/show?id={checkout_id}"
 
     return {"checkoutUrl": checkout_url}
 
